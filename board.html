@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>승인보드</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="index.html" style="color:inherit;"><span class="mark">A</span> 승인보드</a>
+    <nav class="site-nav"><a href="index.html">새 보드 만들기</a></nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero" style="padding:40px 0 16px;">
+    <div class="wrap">
+      <h1 id="boardTitle">불러오는 중...</h1>
+      <div class="share-box">
+        이 링크를 공유하면 누구나 함께 확인하고 참여할 수 있습니다 —
+        <code id="shareUrl">...</code>
+        <button class="btn ghost" id="copyLinkBtn">링크 복사</button>
+        <button class="btn ghost" id="exportBtn">마크다운으로 복사</button>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding-top:0;">
+    <div class="wrap">
+      <div class="card">
+        <h2>승인 요청 등록</h2>
+        <div class="field">
+          <label for="title">요청 제목</label>
+          <input type="text" id="title" placeholder="예: B안으로 최종 확정해도 될까요?">
+        </div>
+        <div class="field">
+          <label for="desc">설명 (선택)</label>
+          <textarea id="desc" placeholder="이해관계자가 판단하는 데 필요한 배경을 적어주세요."></textarea>
+        </div>
+        <button class="btn" id="addBtn">요청 등록</button>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding-top:20px;">
+    <div class="wrap">
+      <div class="card">
+        <h2>요청 목록</h2>
+        <div id="itemList" style="margin-top:14px;"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <div>&copy; 2026 승인보드 — <a href="index.html">새 보드 만들기</a></div>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("b");
+  const itemList = document.getElementById("itemList");
+  const boardTitleEl = document.getElementById("boardTitle");
+  const shareUrlEl = document.getElementById("shareUrl");
+
+  let currentBoard = null;
+  let currentItems = [];
+  let currentComments = [];
+
+  function commentsFor(id) {
+    return currentComments.filter((c) => c.feedback_item_id === id);
+  }
+
+  function render() {
+    shareUrlEl.textContent = window.location.href;
+    if (currentItems.length === 0) {
+      itemList.innerHTML = `<div class="empty-state">아직 등록된 요청이 없습니다.</div>`;
+      return;
+    }
+    itemList.innerHTML = "";
+    currentItems.forEach((f) => {
+      const comments = commentsFor(f.id);
+      const card = document.createElement("div");
+      card.className = "feedback-card";
+      card.innerHTML = `
+        <div class="feedback-head">
+          <div>
+            <div class="item-task">${escapeHtml(f.title)}</div>
+            ${f.description ? `<p class="feedback-desc">${escapeHtml(f.description)}</p>` : ""}
+          </div>
+          <button class="status-pill status-${f.status}" data-id="${f.id}" data-action="cycle">${statusLabel(f.status)}</button>
+        </div>
+        <div class="comment-list">
+          ${comments.length === 0
+            ? `<div class="item-meta">아직 댓글이 없습니다.</div>`
+            : comments.map((c) => `<div class="comment-item"><span class="author">${escapeHtml(c.author_name)}</span>${escapeHtml(c.comment)}<span class="time">${c.created_at.slice(0, 10)}</span></div>`).join("")
+          }
+        </div>
+        <div class="comment-form">
+          <input type="text" class="author-input" placeholder="이름" data-fb="${f.id}" data-role="author">
+          <input type="text" placeholder="의견을 남겨주세요" data-fb="${f.id}" data-role="comment">
+          <button class="btn small" data-fb="${f.id}" data-action="comment">등록</button>
+        </div>
+        <div class="feedback-actions">
+          <button class="btn danger-text" data-id="${f.id}" data-action="delete">요청 삭제</button>
+        </div>
+      `;
+      itemList.appendChild(card);
+    });
+  }
+
+  async function refreshItems() {
+    currentItems = await loadFeedbackItems(currentBoard.id);
+    currentComments = await loadFeedbackComments(currentItems.map((f) => f.id));
+    render();
+  }
+
+  async function init() {
+    if (!code) {
+      boardTitleEl.textContent = "보드를 찾을 수 없습니다";
+      itemList.innerHTML = `<div class="empty-state">잘못된 링크입니다. <a href="index.html">새 보드를 만들어보세요.</a></div>`;
+      return;
+    }
+    try {
+      currentBoard = await loadBoardByCode(code);
+      boardTitleEl.textContent = currentBoard.title;
+      await refreshItems();
+    } catch (e) {
+      boardTitleEl.textContent = "불러오지 못했습니다";
+      itemList.innerHTML = `<div class="empty-state">보드 정보를 불러오지 못했습니다. config.js 설정과 Supabase 스키마를 확인해주세요.</div>`;
+    }
+  }
+
+  document.getElementById("addBtn").addEventListener("click", async () => {
+    const title = document.getElementById("title").value.trim();
+    const description = document.getElementById("desc").value.trim();
+    if (!title || !currentBoard) return;
+    await addFeedbackItem(currentBoard.id, { title, description });
+    document.getElementById("title").value = "";
+    document.getElementById("desc").value = "";
+    await refreshItems();
+  });
+
+  itemList.addEventListener("click", async (e) => {
+    const cycleBtn = e.target.closest("button[data-action='cycle']");
+    const deleteBtn = e.target.closest("button[data-action='delete']");
+    const commentBtn = e.target.closest("button[data-action='comment']");
+    if (cycleBtn) {
+      const id = cycleBtn.getAttribute("data-id");
+      const f = currentItems.find((x) => x.id === id);
+      await updateFeedbackStatus(id, nextStatus(f.status));
+      await refreshItems();
+    } else if (deleteBtn) {
+      if (!confirm("이 요청을 삭제할까요? 댓글도 함께 삭제됩니다.")) return;
+      await deleteFeedbackItem(deleteBtn.getAttribute("data-id"));
+      await refreshItems();
+    } else if (commentBtn) {
+      const fbId = commentBtn.getAttribute("data-fb");
+      const authorInput = document.querySelector(`input[data-fb="${fbId}"][data-role="author"]`);
+      const commentInput = document.querySelector(`input[data-fb="${fbId}"][data-role="comment"]`);
+      const author_name = authorInput.value.trim() || "익명";
+      const comment = commentInput.value.trim();
+      if (!comment) return;
+      await addFeedbackComment(fbId, { author_name, comment });
+      await refreshItems();
+    }
+  });
+
+  document.getElementById("copyLinkBtn").addEventListener("click", async () => {
+    const ok = await copyText(window.location.href);
+    const btn = document.getElementById("copyLinkBtn");
+    btn.textContent = ok ? "복사됨" : "복사 실패";
+    setTimeout(() => { btn.textContent = "링크 복사"; }, 1500);
+  });
+
+  document.getElementById("exportBtn").addEventListener("click", async () => {
+    const md = exportMarkdown(currentBoard, currentItems);
+    const ok = await copyText(md);
+    const btn = document.getElementById("exportBtn");
+    btn.textContent = ok ? "복사됨" : "복사 실패";
+    setTimeout(() => { btn.textContent = "마크다운으로 복사"; }, 1500);
+  });
+
+  init();
+</script>
+</body>
+</html>
