@@ -127,3 +127,87 @@ async function copyText(text) {
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
+
+// 최근 만든 보드 (이 브라우저에서만 기억됨 — 로그인/서버 없이 localStorage만 사용)
+const RECENT_BOARDS_KEY = "apb_recent_boards";
+const RECENT_BOARDS_MAX = 10;
+
+function getRecentBoards() {
+  try {
+    const raw = localStorage.getItem(RECENT_BOARDS_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveRecentBoard(title, share_code) {
+  try {
+    let list = getRecentBoards().filter((b) => b.share_code !== share_code);
+    list.unshift({ title, share_code, created_at: Date.now() });
+    list = list.slice(0, RECENT_BOARDS_MAX);
+    localStorage.setItem(RECENT_BOARDS_KEY, JSON.stringify(list));
+  } catch (e) {
+    // localStorage를 못 쓰는 환경(시크릿 모드 등)이면 조용히 무시
+  }
+}
+
+function removeRecentBoard(share_code) {
+  try {
+    const list = getRecentBoards().filter((b) => b.share_code !== share_code);
+    localStorage.setItem(RECENT_BOARDS_KEY, JSON.stringify(list));
+  } catch (e) {
+    // localStorage를 못 쓰는 환경이면 조용히 무시
+  }
+}
+
+function clearRecentBoards() {
+  try {
+    localStorage.removeItem(RECENT_BOARDS_KEY);
+  } catch (e) {
+    // localStorage를 못 쓰는 환경이면 조용히 무시
+  }
+}
+
+function handleRemoveRecentBoard(share_code, containerId, cardId) {
+  removeRecentBoard(share_code);
+  renderRecentBoards(containerId, cardId);
+}
+
+function handleClearRecentBoards(containerId, cardId) {
+  clearRecentBoards();
+  renderRecentBoards(containerId, cardId);
+}
+
+function renderRecentBoards(containerId, cardId) {
+  const list = getRecentBoards();
+  const card = document.getElementById(cardId);
+  const container = document.getElementById(containerId);
+  if (!card || !container) return;
+  if (list.length === 0) {
+    card.style.display = "none";
+    container.innerHTML = "";
+    return;
+  }
+  const rows = list
+    .map((b) => {
+      const d = new Date(b.created_at);
+      const dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
+      const code = encodeURIComponent(b.share_code);
+      return `<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line);">
+        <a href="board.html?b=${code}" style="font-size:0.92rem;">${escapeHtml(b.title)}</a>
+        <span style="display:flex; align-items:center; gap:8px;">
+          <span class="item-meta">${dateStr}</span>
+          <button type="button" class="btn danger-text" style="padding:2px 6px;" onclick="handleRemoveRecentBoard('${b.share_code}', '${containerId}', '${cardId}')">목록에서 지우기</button>
+        </span>
+      </div>`;
+    })
+    .join("");
+  const clearRow = `<div style="text-align:right; padding-top:8px;">
+    <button type="button" class="btn ghost" onclick="handleClearRecentBoards('${containerId}', '${cardId}')">목록 모두 지우기</button>
+  </div>`;
+  container.innerHTML = rows + clearRow;
+  card.style.display = "block";
+}

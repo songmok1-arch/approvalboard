@@ -39,6 +39,12 @@
         <button class="btn" id="createBtn" style="width:100%;">만들고 시작하기</button>
         <p id="errorMsg" style="color:#C0362C; font-size:0.85rem; margin-top:10px; display:none;"></p>
       </div>
+
+      <div class="card" id="recentBoardsCard" style="max-width:520px; margin-top:16px; display:none;">
+        <h2 style="font-size:1.02rem; margin-bottom:4px;">최근 만든 보드</h2>
+        <p style="font-size:0.8rem; color:var(--ink-faint); margin:0 0 10px;">이 브라우저에서 최근에 만든 보드만 보여줍니다. 팀과 공유하려면 보드 안의 링크를 복사해 따로 저장해두세요. "목록에서 지우기"는 이 목록에서만 안 보이게 할 뿐, 실제 보드 데이터는 지워지지 않습니다.</p>
+        <div id="recentBoardsList"></div>
+      </div>
     </div>
   </section>
 
@@ -100,6 +106,7 @@
     errorMsg.style.display = "none";
     try {
       const board = await createBoard(title);
+      saveRecentBoard(title, board.share_code);
       window.location.href = `board.html?b=${board.share_code}`;
     } catch (e) {
       errorMsg.textContent = "보드를 만들지 못했습니다. config.js와 Supabase 스키마를 확인해주세요. (" + (e.message || e) + ")";
@@ -111,6 +118,8 @@
 
   createBtn.addEventListener("click", handleCreate);
   titleInput.addEventListener("keydown", (e) => { if (e.key === "Enter") handleCreate(); });
+
+  renderRecentBoards("recentBoardsList", "recentBoardsCard");
 </script>
 </body>
 </html>
